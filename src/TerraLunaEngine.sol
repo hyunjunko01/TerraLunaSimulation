@@ -3,8 +3,11 @@ pragma solidity ^0.8.18;
 
 import {Terra} from "./Terra.sol";
 import {Luna} from "./Luna.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
-contract TerraLunaEngine {
+contract TerraLunaEngine is ReentrancyGuard {
+    error TerraLunaEngine__NeedsMoreThanZero();
+
     Terra public immutable i_terra = new Terra(address(this));
     Luna public immutable i_luna = new Luna(address(this));
 
@@ -16,14 +19,20 @@ contract TerraLunaEngine {
     uint256 public lunaSupply;
     uint256 public confidence;
 
+    modifier moreThanZero(uint256 amount) {
+        if (amount == 0) {
+            revert TerraLunaEngine__NeedsMoreThanZero();
+        }
+        _;
+    }
+
     // the ideal price we want
     constructor() {
         lunaPrice = INITIAL_LUNA_PRICE;
-        confidence = 1e18;
     }
 
     // UST -> LUNA (burn UST, mint LUNA)
-    function swapUSTtoLUNA(uint256 ustAmount) external {
+    function swapUSTtoLUNA(uint256 ustAmount) external moreThanZero(ustAmount) nonReentrant {
         i_terra.transferFrom(msg.sender, address(this), ustAmount); // transfer the UST in the user's account to the engine's account
         i_terra.burn(address(this), ustAmount); // burn the UST received from the user.
 
@@ -35,7 +44,7 @@ contract TerraLunaEngine {
     }
 
     // LUNA -> UST (burn LUNA, mint UST)
-    function swapLUNAtoUST(uint256 lunaAmount) external {
+    function swapLUNAtoUST(uint256 lunaAmount) external moreThanZero(lunaAmount) nonReentrant {
         i_luna.transferFrom(msg.sender, address(this), lunaAmount);
         i_luna.burn(address(this), lunaAmount);
 
