@@ -15,10 +15,11 @@ It implements the core minting, burning, and swap mechanics for UST (Terra) and 
     ├─ Terra.sol           # ERC20 stablecoin implementation (UST)
     ├─ Luna.sol            # ERC20 reserve token implementation (LUNA)
     ├─ TerraLunaEngine.sol # Engine handling swaps and price updates
+    ├─ AnchorProtocol.sol  # Implement Anchor Protocol
 
 ## Future
 
-- implement multiple scenarios (growth scenario, collapse scenario, Anchor Protocol)
+- implement multiple scenarios (growth scenario, collapse scenario)
 - conduct experiments to explore possible improvements
 
 
