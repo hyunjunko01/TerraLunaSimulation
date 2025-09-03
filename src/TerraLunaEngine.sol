@@ -7,17 +7,20 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 
 contract TerraLunaEngine is ReentrancyGuard {
     error TerraLunaEngine__NeedsMoreThanZero();
+    error TerraLunaEngine__LunaOutOfStock();
 
-    Terra public immutable i_terra = new Terra(address(this));
-    Luna public immutable i_luna = new Luna(address(this));
+    Terra public immutable i_terra;
+    Luna public immutable i_luna;
 
     uint256 public constant TERRA_PRICE = 1e18;
     uint256 public constant INITIAL_LUNA_PRICE = 1e18;
     uint256 public constant INITIAL_LUNA_SUPPLY = 10000000 * 1e18; // 10M LUNA
 
-    uint256 public lunaPrice;
-    uint256 public lunaSupply;
-    uint256 public confidence;
+    uint256 public s_lunaPrice;
+    uint256 private s_lunaSupply;
+
+    event SwapUSTtoLUNA(address indexed user, uint256 ustAmount, uint256 lunaAmount);
+    event SwapLUNAtoUST(address indexed user, uint256 lunaAmount, uint256 ustAmount);
 
     modifier moreThanZero(uint256 amount) {
         if (amount == 0) {
@@ -28,42 +31,69 @@ contract TerraLunaEngine is ReentrancyGuard {
 
     // the ideal price we want
     constructor() {
-        lunaPrice = INITIAL_LUNA_PRICE;
+        i_terra = new Terra(address(this));
+        i_luna = new Luna(address(this));
+
+        s_lunaPrice = INITIAL_LUNA_PRICE;
+        i_luna.mint(address(this), INITIAL_LUNA_SUPPLY);
+        s_lunaSupply = INITIAL_LUNA_SUPPLY;
     }
 
     // UST -> LUNA (burn UST, mint LUNA)
     function swapUSTtoLUNA(uint256 ustAmount) external moreThanZero(ustAmount) nonReentrant {
-        i_terra.transferFrom(msg.sender, address(this), ustAmount); // transfer the UST in the user's account to the engine's account
-        i_terra.burn(address(this), ustAmount); // burn the UST received from the user.
+        // transfer UST from user to this contract and burn UST
+        i_terra.transferFrom(msg.sender, address(this), ustAmount);
+        i_terra.burn(address(this), ustAmount);
 
         // calculate exchange rate
-        uint256 lunaAmount = ustAmount * TERRA_PRICE / lunaPrice;
+        uint256 lunaAmount = ustAmount * TERRA_PRICE / s_lunaPrice;
         i_luna.mint(msg.sender, lunaAmount);
 
+        // update LUNA price and supply to reflect the swap
+        _updateLunaSupply(lunaAmount, true);
         _updateLunaPrice();
+
+        emit SwapUSTtoLUNA(msg.sender, ustAmount, lunaAmount);
     }
 
     // LUNA -> UST (burn LUNA, mint UST)
     function swapLUNAtoUST(uint256 lunaAmount) external moreThanZero(lunaAmount) nonReentrant {
+        // transfer LUNA from user to this contract and burn LUNA
         i_luna.transferFrom(msg.sender, address(this), lunaAmount);
         i_luna.burn(address(this), lunaAmount);
 
-        uint256 ustAmount = lunaAmount * lunaPrice / TERRA_PRICE;
+        // calculate exchange rate
+        uint256 ustAmount = lunaAmount * s_lunaPrice / TERRA_PRICE;
         i_terra.mint(msg.sender, ustAmount);
 
+        // update LUNA price and supply to reflect the swap
+        _updateLunaSupply(lunaAmount, false);
         _updateLunaPrice();
+
+        emit SwapLUNAtoUST(msg.sender, lunaAmount, ustAmount);
+    }
+
+    //////////////////////////////////////////////
+    // Private & Internal View & Pure Functions //
+    //////////////////////////////////////////////
+
+    /// @notice update supply of LUNA
+    /// this function updates the supply of LUNA based on the swap.
+    function _updateLunaSupply(uint256 lunaAmount, bool increase) internal {
+        if (increase) {
+            s_lunaSupply += lunaAmount;
+        } else {
+            s_lunaSupply -= lunaAmount;
+        }
     }
 
     /// @notice update price of LUNA
     /// this function updates the price change based on the supply.
     function _updateLunaPrice() internal {
-        lunaSupply = i_luna.totalSupply();
-
-        if (lunaSupply == 0) {
-            lunaPrice = INITIAL_LUNA_PRICE;
-            return;
+        if (s_lunaSupply == 0) {
+            revert TerraLunaEngine__LunaOutOfStock();
         }
 
-        lunaPrice = (INITIAL_LUNA_SUPPLY * INITIAL_LUNA_PRICE) / lunaSupply;
+        s_lunaPrice = (INITIAL_LUNA_SUPPLY * INITIAL_LUNA_PRICE) / s_lunaSupply;
     }
 }

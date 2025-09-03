@@ -24,11 +24,11 @@ contract Terra is ERC20 {
         i_engine = _engine;
     }
 
-    function burn(address from, uint256 amount) public onlyEngine {
+    function burn(address from, uint256 amount) external onlyEngine {
         _burn(from, amount);
     }
 
-    function mint(address to, uint256 amount) public onlyEngine {
+    function mint(address to, uint256 amount) external onlyEngine {
         _mint(to, amount);
     }
 }
