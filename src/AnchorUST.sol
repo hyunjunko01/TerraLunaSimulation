@@ -29,9 +29,7 @@ contract AnchorUST is ERC20 {
         _burn(from, amount);
     }
 
-    function mint(address to, uint256 amount) external onlyAnchor returns (bool) {
+    function mint(address to, uint256 amount) external onlyAnchor {
         _mint(to, amount);
-
-        return true;
     }
 }

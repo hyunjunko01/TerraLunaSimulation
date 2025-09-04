@@ -12,28 +12,37 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 contract AnchorProtocol is ReentrancyGuard {
     error AnchorProtocol__NeedsMoreThanZero();
     error AnchorProtocol__TransferFailed();
-    error AnchorProtocol__aUSTMintFailed();
+    error AnchorProtocol__InsufficientBalance();
 
     uint256 public constant ANCHOR_INTEREST_RATE = 20; // 20% APY
+    uint256 public constant LUNA_STAKING_REWARD_RATE = 10; // 10% APY
+    uint256 public constant LUNA_STAKING_PERIOD = 7 days;
     uint256 public constant SECONDS_PER_YEAR = 365 * 24 * 60 * 60;
     uint256 public constant PRECISION = 1e18;
 
     // User deposit information
     struct DepositInfo {
-        uint256 DepositedUST; // 원금
-        uint256 aUSTValue;
+        uint256 exchangeRate;
+        uint256 aUSTBalance;
+        uint256 lastUpdateTime; // 마지막 이자 계산 시점
+        uint256 accruedInterest; // 누적된 미지급 이자
+    }
+
+    struct StakeInfo {
+        uint256 exchangeRate;
+        uint256 bLUNABalance;
         uint256 lastUpdateTime; // 마지막 이자 계산 시점
         uint256 accruedInterest; // 누적된 미지급 이자
     }
 
     mapping(address user => DepositInfo) private s_depositInfo;
+    mapping(address user => StakeInfo) private s_stakeInfo;
 
     Terra public immutable i_terra;
     Luna public immutable i_luna;
     AnchorUST public immutable i_aUST;
     BondedLUNA public immutable i_bLUNA;
 
-    event USTDeposited(address indexed user, uint256 indexed amount);
     event aUSTMinted(address indexed user, uint256 indexed amount);
 
     modifier moreThanZero(uint256 amount) {
@@ -51,25 +60,64 @@ contract AnchorProtocol is ReentrancyGuard {
     }
 
     function depositUST(uint256 depositAmount) public moreThanZero(depositAmount) nonReentrant {
+        DepositInfo storage userDeposit = s_depositInfo[msg.sender];
+
+        if (userDeposit.lastUpdateTime == 0) {
+            userDeposit.exchangeRate = PRECISION;
+            userDeposit.lastUpdateTime = block.timestamp;
+        }
+
+        _updateUserInterest(msg.sender);
+
         bool success = i_terra.transferFrom(msg.sender, address(this), depositAmount);
         if (!success) {
             revert AnchorProtocol__TransferFailed();
         }
-        s_depositInfo[msg.sender].DepositedUST += depositAmount;
-        emit USTDeposited(msg.sender, depositAmount);
 
-        bool minted = i_aUST.mint(msg.sender, depositAmount);
-        if (!minted) {
-            revert AnchorProtocol__aUSTMintFailed();
-        }
+        i_aUST.mint(msg.sender, depositAmount);
+        userDeposit.aUSTBalance += depositAmount;
         emit aUSTMinted(msg.sender, depositAmount);
     }
 
     function withdrawUST(uint256 aUSTAmount) public moreThanZero(aUSTAmount) nonReentrant {
+        DepositInfo storage userDeposit = s_depositInfo[msg.sender];
+
         _updateUserInterest(msg.sender);
+
+        if (aUSTAmount > userDeposit.aUSTBalance) {
+            revert AnchorProtocol__InsufficientBalance();
+        }
+
+        uint256 ustToReturn = (aUSTAmount * userDeposit.exchangeRate) / PRECISION;
+
+        i_aUST.burn(msg.sender, aUSTAmount);
+        userDeposit.aUSTBalance -= aUSTAmount;
+
+        bool success = i_terra.transfer(msg.sender, ustToReturn);
+        if (!success) {
+            revert AnchorProtocol__TransferFailed();
+        }
     }
 
-    function stakeLUNA(uint256 stakeAmount) public {}
+    function stakeLUNA(uint256 stakeAmount) public {
+        StakeInfo storage userStake = s_stakeInfo[msg.sender];
+
+        if (userStake.lastUpdateTime == 0) {
+            userStake.exchangeRate = PRECISION;
+            userStake.lastUpdateTime = block.timestamp;
+        }
+
+        bool success = i_luna.transferFrom(msg.sender, address(this), stakeAmount);
+        if (!success) {
+            revert AnchorProtocol__TransferFailed();
+        }
+
+        i_bLUNA.mint(msg.sender, stakeAmount);
+        userStake.bLUNABalance += stakeAmount;
+    }
+
+    function unstakeLUNA(uint256 bLUNAAmount) public {}
+
     function borrowUST() public {}
 
     //////////////////////////////////////////////
@@ -84,17 +132,16 @@ contract AnchorProtocol is ReentrancyGuard {
     function _updateUserInterest(address user) internal {
         DepositInfo storage depositInfo = s_depositInfo[user];
 
-        if (depositInfo.DepositedUST == 0) {
+        if (depositInfo.aUSTBalance == 0) {
             return;
         }
 
-        depositInfo.aUSTValue = i_aUST.balanceOf(user);
         uint256 timeElapsed = block.timestamp - depositInfo.lastUpdateTime;
         if (timeElapsed > 0) {
             uint256 exponent = (PRECISION * ANCHOR_INTEREST_RATE * timeElapsed) / (100 * SECONDS_PER_YEAR);
             uint256 compoundFactor = _calculateCompoundGrowth(exponent);
 
-            depositInfo.aUSTValue = (depositInfo.aUSTValue * compoundFactor) / PRECISION;
+            depositInfo.exchangeRate = (depositInfo.exchangeRate * compoundFactor) / PRECISION;
             depositInfo.lastUpdateTime = block.timestamp;
         }
     }
