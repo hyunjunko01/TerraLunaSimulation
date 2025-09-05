@@ -13,12 +13,18 @@ contract AnchorProtocol is ReentrancyGuard {
     error AnchorProtocol__NeedsMoreThanZero();
     error AnchorProtocol__TransferFailed();
     error AnchorProtocol__InsufficientBalance();
+    error AnchorProtocol__NotEnoughTimeToUnstake();
+    error AnchorProtocol__NothingToWithdraw();
 
     uint256 public constant ANCHOR_INTEREST_RATE = 20; // 20% APY
     uint256 public constant LUNA_STAKING_REWARD_RATE = 10; // 10% APY
     uint256 public constant LUNA_STAKING_PERIOD = 7 days;
     uint256 public constant SECONDS_PER_YEAR = 365 * 24 * 60 * 60;
     uint256 public constant PRECISION = 1e18;
+
+    uint256 public s_lunaTotalStaked;
+    uint256 public s_bLunaTotalSupply;
+    uint256 public s_lunaExchangeRate; // LUNA to bLUNA exchange rate
 
     // User deposit information
     struct DepositInfo {
@@ -29,14 +35,14 @@ contract AnchorProtocol is ReentrancyGuard {
     }
 
     struct StakeInfo {
-        uint256 exchangeRate;
-        uint256 bLUNABalance;
-        uint256 lastUpdateTime; // 마지막 이자 계산 시점
-        uint256 accruedInterest; // 누적된 미지급 이자
+        uint256 lunaStaked;
+        uint256 bLunaAmount;
+        uint256 unstakeTime;
+        uint256 lunaToWithdraw;
     }
 
     mapping(address user => DepositInfo) private s_depositInfo;
-    mapping(address user => StakeInfo) private s_stakeInfo;
+    mapping(address user => StakeInfo) private s_userStakeInfo;
 
     Terra public immutable i_terra;
     Luna public immutable i_luna;
@@ -44,6 +50,7 @@ contract AnchorProtocol is ReentrancyGuard {
     BondedLUNA public immutable i_bLUNA;
 
     event aUSTMinted(address indexed user, uint256 indexed amount);
+    event bLUNAMinted(address indexed user, uint256 indexed amount);
 
     modifier moreThanZero(uint256 amount) {
         if (amount == 0) {
@@ -99,24 +106,60 @@ contract AnchorProtocol is ReentrancyGuard {
         }
     }
 
-    function stakeLUNA(uint256 stakeAmount) public {
-        StakeInfo storage userStake = s_stakeInfo[msg.sender];
+    function stakeLUNA(uint256 stakeAmount) public moreThanZero(stakeAmount) nonReentrant {
+        StakeInfo storage userStakeInfo = s_userStakeInfo[msg.sender];
 
-        if (userStake.lastUpdateTime == 0) {
-            userStake.exchangeRate = PRECISION;
-            userStake.lastUpdateTime = block.timestamp;
-        }
+        _updateLunaExchangeRate();
 
         bool success = i_luna.transferFrom(msg.sender, address(this), stakeAmount);
         if (!success) {
             revert AnchorProtocol__TransferFailed();
         }
+        userStakeInfo.lunaStaked += stakeAmount;
+        s_lunaTotalStaked += stakeAmount;
+        uint256 bLUNAtoMint = (stakeAmount * PRECISION) / s_lunaExchangeRate;
 
-        i_bLUNA.mint(msg.sender, stakeAmount);
-        userStake.bLUNABalance += stakeAmount;
+        i_bLUNA.mint(msg.sender, bLUNAtoMint);
+        userStakeInfo.bLunaAmount += bLUNAtoMint;
+        s_bLunaTotalSupply += bLUNAtoMint;
+        emit bLUNAMinted(msg.sender, bLUNAtoMint);
     }
 
-    function unstakeLUNA(uint256 bLUNAAmount) public {}
+    function unstakeLUNA(uint256 bLUNAAmount) public moreThanZero(bLUNAAmount) nonReentrant {
+        StakeInfo storage userStakeInfo = s_userStakeInfo[msg.sender];
+        if (bLUNAAmount > userStakeInfo.bLunaAmount) {
+            revert AnchorProtocol__InsufficientBalance();
+        }
+        i_bLUNA.burn(msg.sender, bLUNAAmount);
+        userStakeInfo.bLunaAmount -= bLUNAAmount;
+        s_bLunaTotalSupply -= bLUNAAmount;
+
+        _updateLunaExchangeRate();
+        userStakeInfo.lunaToWithdraw += (bLUNAAmount * s_lunaExchangeRate) / PRECISION;
+        userStakeInfo.unstakeTime = block.timestamp;
+    }
+
+    function withdrawLUNA() public nonReentrant {
+        StakeInfo storage userStakeInfo = s_userStakeInfo[msg.sender];
+        if (block.timestamp < userStakeInfo.unstakeTime + LUNA_STAKING_PERIOD) {
+            revert AnchorProtocol__NotEnoughTimeToUnstake();
+        }
+
+        uint256 lunaToWithdraw = userStakeInfo.lunaToWithdraw;
+
+        if (lunaToWithdraw == 0) {
+            revert AnchorProtocol__NothingToWithdraw();
+        }
+
+        bool success = i_luna.transfer(msg.sender, lunaToWithdraw);
+        if (!success) {
+            revert AnchorProtocol__TransferFailed();
+        }
+
+        s_lunaTotalStaked -= lunaToWithdraw;
+        userStakeInfo.lunaToWithdraw = 0;
+        userStakeInfo.unstakeTime = 0;
+    }
 
     function borrowUST() public {}
 
@@ -143,6 +186,14 @@ contract AnchorProtocol is ReentrancyGuard {
 
             depositInfo.exchangeRate = (depositInfo.exchangeRate * compoundFactor) / PRECISION;
             depositInfo.lastUpdateTime = block.timestamp;
+        }
+    }
+
+    function _updateLunaExchangeRate() internal {
+        if (s_bLunaTotalSupply == 0) {
+            s_lunaExchangeRate = PRECISION;
+        } else {
+            s_lunaExchangeRate = (s_lunaTotalStaked * PRECISION) / s_bLunaTotalSupply;
         }
     }
 
