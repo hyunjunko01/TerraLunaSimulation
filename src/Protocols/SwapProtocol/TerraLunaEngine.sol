@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.18;
 
-import {Terra} from "./Terra.sol";
-import {Luna} from "./Luna.sol";
+import {Terra} from "../../Tokens/Terra.sol";
+import {Luna} from "../../Tokens/Luna.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 contract TerraLunaEngine is ReentrancyGuard {

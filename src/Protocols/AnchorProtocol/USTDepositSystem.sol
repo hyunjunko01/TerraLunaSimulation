@@ -4,7 +4,7 @@ pragma solidity ^0.8.18;
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
-import {AnchorUST} from "../AnchorUST.sol";
+import {AnchorUST} from "../../Tokens/AnchorUST.sol";
 
 /// @title UST Deposit System - Simplified UST Deposit System with aUST
 /// @notice Users deposit UST, receive aUST which appreciates in value via exchange rate accrual.

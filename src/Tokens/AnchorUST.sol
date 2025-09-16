@@ -3,7 +3,7 @@
 pragma solidity ^0.8.18;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import {AnchorProtocol} from "./AnchorProtocol.sol";
+import {USTDepositSystem} from "../Protocols/AnchorProtocol/USTDepositSystem.sol";
 
 contract AnchorUST is ERC20 {
     error AnchorUST__NotAnchor();
