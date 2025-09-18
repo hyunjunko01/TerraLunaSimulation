@@ -9,10 +9,11 @@ contract TerraLunaEngine is ReentrancyGuard {
     error TerraLunaEngine__NeedsMoreThanZero();
     error TerraLunaEngine__LunaOutOfStock();
 
-    Terra public immutable i_terra;
+    Terra public immutable i_ust;
     Luna public immutable i_luna;
 
-    uint256 public constant TERRA_PRICE = 1e18;
+    uint256 public constant UST_PRICE = 1e18;
+    uint256 public constant INITIAL_UST_SUPPLY = 10000000 * 1e18;
     uint256 public constant INITIAL_LUNA_PRICE = 1e18;
     uint256 public constant INITIAL_LUNA_SUPPLY = 10000000 * 1e18; // 10M LUNA
 
@@ -31,8 +32,10 @@ contract TerraLunaEngine is ReentrancyGuard {
 
     // the ideal price we want
     constructor() {
-        i_terra = new Terra(address(this));
+        i_ust = new Terra(address(this));
         i_luna = new Luna(address(this));
+
+        i_ust.mint(address(this), INITIAL_LUNA_SUPPLY);
 
         s_lunaPrice = INITIAL_LUNA_PRICE;
         i_luna.mint(address(this), INITIAL_LUNA_SUPPLY);
@@ -42,11 +45,11 @@ contract TerraLunaEngine is ReentrancyGuard {
     // UST -> LUNA (burn UST, mint LUNA)
     function swapUSTtoLUNA(uint256 ustAmount) external moreThanZero(ustAmount) nonReentrant {
         // transfer UST from user to this contract and burn UST
-        i_terra.transferFrom(msg.sender, address(this), ustAmount);
-        i_terra.burn(address(this), ustAmount);
+        i_ust.transferFrom(msg.sender, address(this), ustAmount);
+        i_ust.burn(address(this), ustAmount);
 
         // calculate exchange rate
-        uint256 lunaAmount = ustAmount * TERRA_PRICE / s_lunaPrice;
+        uint256 lunaAmount = ustAmount * UST_PRICE / s_lunaPrice;
         i_luna.mint(msg.sender, lunaAmount);
 
         // update LUNA price and supply to reflect the swap
@@ -63,8 +66,8 @@ contract TerraLunaEngine is ReentrancyGuard {
         i_luna.burn(address(this), lunaAmount);
 
         // calculate exchange rate
-        uint256 ustAmount = lunaAmount * s_lunaPrice / TERRA_PRICE;
-        i_terra.mint(msg.sender, ustAmount);
+        uint256 ustAmount = lunaAmount * s_lunaPrice / UST_PRICE;
+        i_ust.mint(msg.sender, ustAmount);
 
         // update LUNA price and supply to reflect the swap
         _updateLunaSupply(lunaAmount, false);
@@ -95,5 +98,12 @@ contract TerraLunaEngine is ReentrancyGuard {
         }
 
         s_lunaPrice = (INITIAL_LUNA_SUPPLY * INITIAL_LUNA_PRICE) / s_lunaSupply;
+    }
+
+    ///////// Test Function //////////
+
+    function mintToUserForTest(address user, uint256 ustAmount, uint256 lunaAmount) external {
+        i_ust.mint(user, ustAmount);
+        i_luna.mint(user, lunaAmount);
     }
 }
