@@ -4,4 +4,6 @@ pragma solidity ^0.8.18;
 
 import {Script} from "forge-std/Script.sol";
 
-contract DeployLunaStakingSystem is Script {}
+contract DeployLUNAStakingSystem is Script {
+    function run() external {}
+}

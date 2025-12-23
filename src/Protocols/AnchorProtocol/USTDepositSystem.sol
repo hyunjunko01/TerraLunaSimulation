@@ -8,7 +8,8 @@ import {AnchorUST} from "../../Tokens/AnchorUST.sol";
 
 /// @title UST Deposit System - Simplified UST Deposit System with aUST
 /// @notice Users deposit UST, receive aUST which appreciates in value via exchange rate accrual.
-/// @author HyunJun Ko
+/// @author Tyler Ko (Hyunjun Ko)
+
 contract USTDepositSystem is ReentrancyGuard {
     using SafeERC20 for IERC20;
 

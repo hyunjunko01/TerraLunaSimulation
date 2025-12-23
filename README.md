@@ -11,13 +11,21 @@ It implements the core minting, burning, and swap mechanics for UST (Terra) and 
 
 ## Project Structure (Incomplete)
 
-    src/
-    ├─ Terra.sol           # ERC20 stablecoin implementation (UST)
-    ├─ Luna.sol            # ERC20 reserve token implementation (LUNA)
-    ├─ AnchorUST.sol       # Anchor UST deposit receipt token
-    ├─ BondedLUNA.sol      # Bonded LUNA
-    ├─ TerraLunaEngine.sol # Engine handling swaps and price updates
-    ├─ AnchorProtocol.sol  # Implement Anchor Protocol
+src/
+ ├─ Protocols/
+ │   ├─ AnchorProtocol/
+ │   │   ├─ LUNAStakingSystem.sol   # LUNA staking engine
+ │   │   ├─ USTDepositSystem.sol    # UST deposit engine
+ │   │   └─ USTLoanSystem.sol       # UST loan engine
+ │   └─ SwapProtocol/
+ │       └─ TerraLunaEngine.sol     # Swap & price engine
+ │
+ └─ Tokens/
+     ├─ Terra.sol        # UST stablecoin
+     ├─ Luna.sol         # LUNA reserve token
+     ├─ AnchorUST.sol    # Deposit receipt token (aUST)
+     └─ BondedLUNA.sol   # Staked LUNA (bLUNA)
+
 
 
 ### TerraLunaEngine.sol

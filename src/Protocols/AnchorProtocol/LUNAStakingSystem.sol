@@ -9,7 +9,7 @@ import {BondedLUNA} from "../../Tokens/BondedLuna.sol";
 
 /// @title LUNA Staking System - Simplified LUNA Staking System with bLUNA
 /// @notice Users stake LUNA, receive bLUNA which represents their staked LUNA and earns staking rewards.
-/// @author HyunJun Ko
+/// @author Tyler Ko (Hyunjun Ko)
 
 contract LUNAStakingSystem is ReentrancyGuard {
     using SafeERC20 for IERC20;
