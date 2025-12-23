@@ -11,6 +11,7 @@ It implements the core minting, burning, and swap mechanics for UST (Terra) and 
 
 ## Project Structure (Incomplete)
 
+```
 src/
  ├─ Protocols/
  │   ├─ AnchorProtocol/
@@ -25,6 +26,7 @@ src/
      ├─ Luna.sol         # LUNA reserve token
      ├─ AnchorUST.sol    # Deposit receipt token (aUST)
      └─ BondedLUNA.sol   # Staked LUNA (bLUNA)
+```
 
 
 
