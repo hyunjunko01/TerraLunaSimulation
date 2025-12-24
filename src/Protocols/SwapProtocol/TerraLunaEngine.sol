@@ -5,9 +5,16 @@ import {Terra} from "../../Tokens/Terra.sol";
 import {Luna} from "../../Tokens/Luna.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
+/**
+ *     @title Terra-Luna Swap Engine - Simplified Swap Engine for UST and LUNA
+ *     @notice This is the Terra-Luna Swap Engine contract, which allows users to swap between UST and LUNA tokens.
+ *     The swap rates are determined by a simple supply-demand mechanism.
+ *     @author Tyler Ko (Hyunjun Ko)
+ */
 contract TerraLunaEngine is ReentrancyGuard {
     error TerraLunaEngine__NeedsMoreThanZero();
     error TerraLunaEngine__LunaOutOfStock();
+    error TerraLunaEngine__LunaPriceIsTooLow();
 
     Terra public immutable i_ust;
     Luna public immutable i_luna;
@@ -16,6 +23,7 @@ contract TerraLunaEngine is ReentrancyGuard {
     uint256 public constant INITIAL_UST_SUPPLY = 10000000 * 1e18;
     uint256 public constant INITIAL_LUNA_PRICE = 1e18;
     uint256 public constant INITIAL_LUNA_SUPPLY = 10000000 * 1e18; // 10M LUNA
+    uint256 public constant MIN_LUNA_PRICE = 0.0001 ether;
 
     uint256 public s_lunaPrice;
     uint256 private s_lunaSupply;
@@ -30,23 +38,23 @@ contract TerraLunaEngine is ReentrancyGuard {
         _;
     }
 
+    // initial supply of LUNA is distributed to user later when this contract is deployed
     // the ideal price we want
     constructor() {
         i_ust = new Terra(address(this));
         i_luna = new Luna(address(this));
 
-        i_ust.mint(address(this), INITIAL_LUNA_SUPPLY);
-
         s_lunaPrice = INITIAL_LUNA_PRICE;
-        i_luna.mint(address(this), INITIAL_LUNA_SUPPLY);
         s_lunaSupply = INITIAL_LUNA_SUPPLY;
     }
 
-    // UST -> LUNA (burn UST, mint LUNA)
+    /**
+     *     @notice Swap UST to LUNA, UST -> LUNA (burn UST, mint LUNA)
+     *     @param ustAmount The amount of UST to swap
+     */
     function swapUSTtoLUNA(uint256 ustAmount) external moreThanZero(ustAmount) nonReentrant {
         // transfer UST from user to this contract and burn UST
-        i_ust.transferFrom(msg.sender, address(this), ustAmount);
-        i_ust.burn(address(this), ustAmount);
+        i_ust.burn(msg.sender, ustAmount);
 
         // calculate exchange rate
         uint256 lunaAmount = ustAmount * UST_PRICE / s_lunaPrice;
@@ -59,11 +67,13 @@ contract TerraLunaEngine is ReentrancyGuard {
         emit SwapUSTtoLUNA(msg.sender, ustAmount, lunaAmount);
     }
 
-    // LUNA -> UST (burn LUNA, mint UST)
+    /**
+     *     @notice Swap LUNA to UST, LUNA -> UST (burn LUNA, mint UST)
+     *     @param lunaAmount The amount of LUNA to swap
+     */
     function swapLUNAtoUST(uint256 lunaAmount) external moreThanZero(lunaAmount) nonReentrant {
         // transfer LUNA from user to this contract and burn LUNA
-        i_luna.transferFrom(msg.sender, address(this), lunaAmount);
-        i_luna.burn(address(this), lunaAmount);
+        i_luna.burn(msg.sender, lunaAmount);
 
         // calculate exchange rate
         uint256 ustAmount = lunaAmount * s_lunaPrice / UST_PRICE;
@@ -80,8 +90,10 @@ contract TerraLunaEngine is ReentrancyGuard {
     // Private & Internal View & Pure Functions //
     //////////////////////////////////////////////
 
-    /// @notice update supply of LUNA
-    /// this function updates the supply of LUNA based on the swap.
+    /**
+     *  @notice update supply of LUNA
+     *  this function updates the supply of LUNA based on the swap.
+     */
     function _updateLunaSupply(uint256 lunaAmount, bool increase) internal {
         if (increase) {
             s_lunaSupply += lunaAmount;
@@ -90,20 +102,20 @@ contract TerraLunaEngine is ReentrancyGuard {
         }
     }
 
-    /// @notice update price of LUNA
-    /// this function updates the price change based on the supply.
+    /**
+     * @notice update price of LUNA
+     * this function updates the price change based on the supply.
+     */
     function _updateLunaPrice() internal {
-        if (s_lunaSupply == 0) {
-            revert TerraLunaEngine__LunaOutOfStock();
+        if (s_lunaSupply == 0) revert TerraLunaEngine__LunaOutOfStock();
+
+        uint256 newPrice = (INITIAL_LUNA_SUPPLY * INITIAL_LUNA_PRICE) / s_lunaSupply;
+
+        // If Luna price drops below minimum threshold, revert the transaction
+        if (newPrice < MIN_LUNA_PRICE) {
+            revert TerraLunaEngine__LunaPriceIsTooLow();
         }
 
-        s_lunaPrice = (INITIAL_LUNA_SUPPLY * INITIAL_LUNA_PRICE) / s_lunaSupply;
-    }
-
-    ///////// Test Function //////////
-
-    function mintToUserForTest(address user, uint256 ustAmount, uint256 lunaAmount) external {
-        i_ust.mint(user, ustAmount);
-        i_luna.mint(user, lunaAmount);
+        s_lunaPrice = newPrice;
     }
 }
